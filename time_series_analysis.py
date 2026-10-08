@@ -1,238 +1,181 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-# ==============================
-# 1. LOAD DATA
-# ==============================
+# ==========================================
+# WEEK 5: ADVANCED ANALYTICS & TIME SERIES
+# ==========================================
 
+# 1. Load Dataset
 df = pd.read_csv("sales_data.csv")
-
-df["Date"] = pd.to_datetime(df["Date"])
-df = df.sort_values("Date")
 
 print("\n===== DATASET INFORMATION =====")
 print(df.head())
-print("\nTotal records:", len(df))
 
-# ==============================
-# 2. CHECK MISSING VALUES
-# ==============================
+print("\nNumber of records:", len(df))
+print("Columns:", list(df.columns))
+
+
+# 2. Data Cleaning
+df["Date"] = pd.to_datetime(df["Date"])
+df = df.sort_values("Date").reset_index(drop=True)
 
 print("\n===== MISSING VALUES =====")
 print(df.isnull().sum())
 
-# ==============================
-# 3. BASIC STATISTICS
-# ==============================
 
-print("\n===== SALES STATISTICS =====")
+# 3. Descriptive Statistics
+print("\n===== DESCRIPTIVE STATISTICS =====")
 print(df["Sales"].describe())
 
-# ==============================
-# 4. TIME SERIES TREND
-# ==============================
 
-plt.figure(figsize=(12, 5))
-plt.plot(df["Date"], df["Sales"])
-plt.title("Daily Sales Trend")
-plt.xlabel("Date")
-plt.ylabel("Sales")
-plt.xticks(rotation=45)
-plt.tight_layout()
+# 4. Add Time Features
+df["Day"] = df["Date"].dt.day
+df["Month"] = df["Date"].dt.month
+df["Weekday"] = df["Date"].dt.day_name()
 
-plt.savefig("sales_trend.png")
-plt.show()
 
-# ==============================
-# 5. ROLLING AVERAGE
-# ==============================
+# 5. Weekday Analysis
+weekday_order = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday"
+]
 
-df["Rolling_Average"] = df["Sales"].rolling(window=7).mean()
-
-plt.figure(figsize=(12, 5))
-plt.plot(df["Date"], df["Sales"], label="Actual Sales")
-plt.plot(
-    df["Date"],
-    df["Rolling_Average"],
-    label="7-Day Rolling Average"
+weekday_avg = (
+    df.groupby("Weekday")["Sales"]
+    .mean()
+    .reindex(weekday_order)
 )
 
-plt.title("Sales Trend with 7-Day Rolling Average")
+print("\n===== WEEKDAY AVERAGE SALES =====")
+print(weekday_avg)
+
+
+# 6. Trend Analysis - 7 Day Rolling Average
+df["Rolling_7_Day"] = df["Sales"].rolling(window=7).mean()
+
+plt.figure(figsize=(10, 5))
+plt.plot(df["Date"], df["Sales"], label="Daily Sales")
+plt.plot(df["Date"], df["Rolling_7_Day"], label="7-Day Rolling Average")
 plt.xlabel("Date")
 plt.ylabel("Sales")
+plt.title("Daily Sales Trend and 7-Day Rolling Average")
 plt.legend()
 plt.xticks(rotation=45)
 plt.tight_layout()
-
-plt.savefig("rolling_average.png")
+plt.savefig("daily_sales_trend.png")
 plt.show()
 
-# ==============================
-# 6. DAY OF WEEK ANALYSIS
-# ==============================
 
-df["Day"] = df["Date"].dt.day_name()
-
-day_sales = df.groupby("Day")["Sales"].mean()
-
-print("\n===== AVERAGE SALES BY DAY =====")
-print(day_sales)
-
-plt.figure(figsize=(10, 5))
-day_sales.plot(kind="bar")
-
-plt.title("Average Sales by Day of Week")
-plt.xlabel("Day")
+# 7. Weekday Average Chart
+plt.figure(figsize=(9, 5))
+weekday_avg.plot(kind="bar")
+plt.xlabel("Weekday")
 plt.ylabel("Average Sales")
+plt.title("Average Sales by Weekday")
 plt.xticks(rotation=45)
 plt.tight_layout()
-
-plt.savefig("seasonality.png")
+plt.savefig("weekday_average_sales.png")
 plt.show()
 
-# ==============================
-# 7. ANOMALY DETECTION
-# ==============================
 
-mean_sales = df["Sales"].mean()
-std_sales = df["Sales"].std()
+# 8. Anomaly Detection using IQR
+Q1 = df["Sales"].quantile(0.25)
+Q3 = df["Sales"].quantile(0.75)
+IQR = Q3 - Q1
 
-upper_limit = mean_sales + 2 * std_sales
-lower_limit = mean_sales - 2 * std_sales
+lower_bound = Q1 - 1.5 * IQR
+upper_bound = Q3 + 1.5 * IQR
 
-df["Anomaly"] = (
-    (df["Sales"] > upper_limit) |
-    (df["Sales"] < lower_limit)
-)
+anomalies = df[
+    (df["Sales"] < lower_bound) |
+    (df["Sales"] > upper_bound)
+]
 
-anomalies = df[df["Anomaly"]]
+print("\n===== ANOMALY DETECTION =====")
+print("Lower Bound:", lower_bound)
+print("Upper Bound:", upper_bound)
+print("Number of anomalies:", len(anomalies))
 
-print("\n===== ANOMALIES =====")
-print(anomalies[["Date", "Sales"]])
+if len(anomalies) > 0:
+    print(anomalies[["Date", "Sales"]])
+else:
+    print("No anomalies detected.")
 
-# ==============================
-# 8. TRAIN-TEST SPLIT
-# ==============================
 
-train_size = int(len(df) * 0.8)
+# 9. Chronological Train-Test Split
+train_size = int(len(df) * 0.80)
 
-train = df.iloc[:train_size].copy()
-test = df.iloc[train_size:].copy()
+train = df["Sales"].iloc[:train_size]
+test = df["Sales"].iloc[train_size:]
 
-print("\nTraining records:", len(train))
+print("\n===== TRAIN TEST SPLIT =====")
+print("Training records:", len(train))
 print("Testing records:", len(test))
 
-# ==============================
-# 9. NAIVE FORECAST
-# ==============================
 
-naive_predictions = np.repeat(
-    train["Sales"].iloc[-1],
-    len(test)
-)
+# 10. Naive Forecast
+naive_forecast = np.repeat(train.iloc[-1], len(test))
 
-# ==============================
-# 10. SEASONAL NAIVE FORECAST
-# ==============================
 
-seasonal_predictions = []
+# 11. Seasonal Naive Forecast
+# Weekly seasonality = 7 days
+seasonal_forecast = train.iloc[-7:].values
 
-for i in range(len(test)):
-    index = train_size + i - 7
+seasonal_forecast = np.tile(
+    seasonal_forecast,
+    int(np.ceil(len(test) / 7))
+)[:len(test)]
 
-    if index >= 0:
-        seasonal_predictions.append(df["Sales"].iloc[index])
-    else:
-        seasonal_predictions.append(train["Sales"].iloc[-1])
 
-# ==============================
-# 11. MODEL EVALUATION
-# ==============================
-
+# 12. Evaluation Metrics
 def calculate_metrics(actual, predicted):
 
-    mae = mean_absolute_error(actual, predicted)
+    mae = np.mean(np.abs(actual - predicted))
 
     rmse = np.sqrt(
-        mean_squared_error(actual, predicted)
+        np.mean((actual - predicted) ** 2)
     )
 
     mape = np.mean(
-        np.abs(
-            (actual - predicted) / actual
-        )
+        np.abs((actual - predicted) / actual)
     ) * 100
 
     return mae, rmse, mape
 
 
 naive_mae, naive_rmse, naive_mape = calculate_metrics(
-    test["Sales"],
-    naive_predictions
+    test.values,
+    naive_forecast
 )
 
 seasonal_mae, seasonal_rmse, seasonal_mape = calculate_metrics(
-    test["Sales"],
-    seasonal_predictions
+    test.values,
+    seasonal_forecast
 )
 
-# ==============================
-# 12. PRINT RESULTS
-# ==============================
 
+# 13. Display Model Performance
 print("\n===== MODEL PERFORMANCE =====")
 
 print("\nNaive Forecast")
-print("MAE :", round(naive_mae, 2))
-print("RMSE:", round(naive_rmse, 2))
-print("MAPE:", round(naive_mape, 2), "%")
+print("MAE :", naive_mae)
+print("RMSE:", naive_rmse)
+print("MAPE:", naive_mape)
 
 print("\nSeasonal Naive Forecast")
-print("MAE :", round(seasonal_mae, 2))
-print("RMSE:", round(seasonal_rmse, 2))
-print("MAPE:", round(seasonal_mape, 2), "%")
+print("MAE :", seasonal_mae)
+print("RMSE:", seasonal_rmse)
+print("MAPE:", seasonal_mape)
 
-# ==============================
-# 13. ACTUAL VS FORECAST
-# ==============================
 
-plt.figure(figsize=(12, 5))
-
-plt.plot(
-    train["Date"],
-    train["Sales"],
-    label="Training Data"
-)
-
-plt.plot(
-    test["Date"],
-    test["Sales"],
-    label="Actual Test Data"
-)
-
-plt.plot(
-    test["Date"],
-    seasonal_predictions,
-    label="Seasonal Forecast"
-)
-
-plt.title("Actual vs Forecasted Sales")
-plt.xlabel("Date")
-plt.ylabel("Sales")
-plt.legend()
-plt.xticks(rotation=45)
-plt.tight_layout()
-
-plt.savefig("actual_vs_forecast.png")
-plt.show()
-
-# ==============================
-# 14. SAVE RESULTS
-# ==============================
-
-results = pd.DataFrame({
+# 14. Save Model Performance
+performance = pd.DataFrame({
     "Model": [
         "Naive Forecast",
         "Seasonal Naive Forecast"
@@ -251,11 +194,39 @@ results = pd.DataFrame({
     ]
 })
 
-results.to_csv(
+performance.to_csv(
     "model_performance.csv",
     index=False
 )
 
-print("\n===== PROJECT COMPLETED =====")
-print("Charts saved successfully.")
-print("Model performance saved as model_performance.csv")
+print("\nmodel_performance.csv created successfully.")
+
+
+# 15. Model Comparison Chart
+plt.figure(figsize=(9, 5))
+
+plt.bar(
+    performance["Model"],
+    performance["RMSE"]
+)
+
+plt.xlabel("Model")
+plt.ylabel("RMSE")
+plt.title("Forecasting Model RMSE Comparison")
+
+plt.xticks(rotation=15)
+plt.tight_layout()
+
+plt.savefig("model_performance.png")
+plt.show()
+
+
+# 16. Final Conclusion
+best_model = performance.loc[
+    performance["RMSE"].idxmin(),
+    "Model"
+]
+
+print("\n===== FINAL RESULT =====")
+print("Best performing model:", best_model)
+print("Analysis completed successfully.")
